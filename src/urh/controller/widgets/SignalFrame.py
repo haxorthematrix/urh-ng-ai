@@ -34,6 +34,11 @@ from urh.ui.actions.ChangeSignalParameter import ChangeSignalParameter
 from urh.ui.actions.EditSignalAction import EditSignalAction, EditAction
 from urh.ui.painting.SignalSceneManager import SignalSceneManager
 from urh.ui.ui_signal_frame import Ui_SignalFrame
+try:
+    from ai_deep_analysis import bridge as ai_bridge
+    from ai_deep_analysis.dialog import show_analysis_dialog
+except ImportError:
+    ai_bridge = None
 from urh.util import FileOperator, util
 from urh.util.Errors import Errors
 from urh.util.Formatter import Formatter
@@ -217,6 +222,9 @@ class SignalFrame(QFrame):
         self.ui.btnReplay.clicked.connect(self.on_btn_replay_clicked)
         self.ui.btnAutoDetect.clicked.connect(self.on_btn_autodetect_clicked)
         self.ui.btnInfo.clicked.connect(self.on_info_btn_clicked)
+        # ai_deep_analysis: install lazily so URH still loads if package missing
+        if ai_bridge is not None:
+            self._install_ai_deep_analysis_action()
         self.ui.btnShowHideStartEnd.clicked.connect(
             self.on_btn_show_hide_start_end_clicked
         )
@@ -1356,6 +1364,48 @@ class SignalFrame(QFrame):
     def on_info_btn_clicked(self):
         sdc = SignalDetailsDialog(self.signal, self)
         sdc.show()
+
+    # ------------------------------------------------------------------
+    # AI Deep Analysis integration (ai_deep_analysis package)
+    # ------------------------------------------------------------------
+    def _install_ai_deep_analysis_action(self):
+        """Add an 'AI Deep Analysis' button next to the auto-detect control."""
+        from PyQt6 import QtWidgets
+        btn = QtWidgets.QPushButton("AI Deep Analysis", self)
+        btn.setToolTip("Run sigdetect / MCP pipeline on this signal")
+        btn.setObjectName("btnAIDeepAnalysis")
+        parent_layout = self.ui.btnAutoDetect.parent().layout()
+        if parent_layout is not None:
+            parent_layout.addWidget(btn)
+        else:
+            self.ui.gridLayout.addWidget(btn, 0, 7, 1, 1)
+        btn.clicked.connect(self.on_btn_ai_deep_analysis_clicked)
+
+    @pyqtSlot()
+    def on_btn_ai_deep_analysis_clicked(self):
+        sel = None
+        try:
+            sa = self.scene_manager.selection_area
+            if not getattr(sa, "is_empty", True):
+                sel = (int(sa.start), int(sa.end))
+        except AttributeError:
+            pass
+        try:
+            from ai_deep_analysis.settings import get_backend, get_agent_model
+            backend = get_backend()
+            model = get_agent_model()
+        except Exception:
+            backend = ai_bridge.BackendChoice.DIRECT
+            model = "claude-opus-4-7"
+        try:
+            result = ai_bridge.run_for_urh_signal(
+                self.signal, selection=sel,
+                backend=backend, agent_model=model,
+            )
+        except Exception as ex:
+            Errors.generic_error("AI Deep Analysis failed", str(ex))
+            return
+        show_analysis_dialog(result, parent=self)
 
     @pyqtSlot(str)
     def on_combobox_modulation_type_text_changed(self, txt: str):

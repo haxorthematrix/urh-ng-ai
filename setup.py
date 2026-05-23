@@ -81,6 +81,15 @@ def get_packages():
         if len(package_path) > 1:
             packages.append(URH_DIR + "." + package_path)
 
+    # urh-ng-ai: AI Deep Analysis package (parallel to urh in src/)
+    ai_root = os.path.join("./src", "ai_deep_analysis")
+    if os.path.isdir(ai_root):
+        packages.append("ai_deep_analysis")
+        for dirpath, dirnames, filenames in os.walk(ai_root):
+            rel = os.path.relpath(dirpath, ai_root).replace(separator, ".")
+            if len(rel) > 1 and not rel.startswith("__pycache__"):
+                packages.append("ai_deep_analysis." + rel)
+
     return packages
 
 
@@ -165,6 +174,17 @@ setup(
     license="GNU General Public License (GPL)",
     download_url="https://github.com/jopohl/urh/tarball/v" + str(version.VERSION),
     install_requires=install_requires,
+    extras_require={
+        # urh-ng-ai: optional dependencies for the AI Deep Analysis feature.
+        # `pip install .[ai]`              — direct + MCP backends
+        # `pip install .[ai,agent]`        — adds Anthropic API agent backend
+        # mcp-sigdetect is the companion repo; pulled from GitHub until PyPI.
+        "ai": [
+            "mcp-sigdetect @ git+https://github.com/haxorthematrix/mcp-sigdetect.git@main",
+            "mcp>=1.27",
+        ],
+        "agent": ["anthropic>=0.40"],
+    },
     setup_requires=["numpy<3.0"],
     python_requires=">=3.9",
     packages=get_packages(),

@@ -1,3 +1,134 @@
+# urh-ng-ai — Universal Radio Hacker, with an AI Deep Analysis button
+
+This is a fork of [`jopohl/urh`](https://github.com/jopohl/urh) that
+adds **AI Deep Analysis** to every signal panel. One click runs the
+current IQ slice through the
+[mcp-sigdetect](https://github.com/haxorthematrix/mcp-sigdetect) MCP
+server — burst detection, modulation classification, OOK / FSK
+demodulation, line-code decoding (PWM, PDM, Manchester), hex
+extraction, and protocol identification — and shows the result in a
+tabbed dialog. Optionally, it can hand the analysis to Claude via the
+Anthropic API so the model writes a natural-language report.
+
+Everything else in URH (capture, demod, generator, simulator) is
+unchanged. The diff against upstream is one file plus a new
+`ai_deep_analysis` package; merges from upstream stay clean.
+
+## What the button does
+
+1. Marshals the currently-selected IQ slice (or the whole signal if
+   nothing is selected) to a tempfile.
+2. Calls `sigdetect.run_pipeline()` — directly, over an MCP stdio
+   server, or as a multi-step agentic Claude API call (your choice).
+3. Renders the result in a tabbed dialog: Overview, Bursts (table
+   with hex per packet), Modulation details, optional AI narrative,
+   and raw JSON.
+
+For the methodology behind the analysis, see the
+[PLAYBOOK](https://github.com/haxorthematrix/mcp-sigdetect/blob/main/PLAYBOOK.md)
+in the sigdetect repo.
+
+## Install
+
+You need **URH itself** plus the **AI extras**, which pull in
+`mcp-sigdetect` from GitHub.
+
+```bash
+git clone https://github.com/haxorthematrix/urh-ng-ai.git
+cd urh-ng-ai
+
+# Optional but strongly recommended
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
+
+# Install URH + AI feature in one shot. The [ai] extra pulls in
+# mcp-sigdetect from GitHub and the mcp Python SDK.
+pip install -e .[ai]
+
+# To enable the agentic Claude-API backend as well:
+pip install -e .[ai,agent]
+# (the agent backend reads ANTHROPIC_API_KEY from the environment)
+
+# Run URH
+urh
+```
+
+URH's own native-extension build (Cython + per-SDR backends) follows the
+upstream install instructions — see the [Universal Radio Hacker
+(upstream)](#universal-radio-hacker-upstream) section below.
+
+## Using AI Deep Analysis
+
+After install, open any signal in URH. On the signal panel toolbar
+you'll see a new **AI Deep Analysis** button next to *Auto-detect
+parameters*. Click it; a tabbed result dialog appears.
+
+### Back-end selection
+
+Three back-ends, switchable via QSettings:
+
+| Backend  | What it does                                                                       | When to use                                                              |
+|----------|------------------------------------------------------------------------------------|--------------------------------------------------------------------------|
+| `direct` | imports `sigdetect.run_pipeline()` in-process                                      | default; fastest, no extra setup beyond `pip install .[ai]`             |
+| `mcp`    | spawns `python -m sigdetect.server` over stdio, calls `run_pipeline` via MCP       | parity testing with the Claude Code MCP path                             |
+| `agent`  | Anthropic API call with the sigdetect MCP server attached as a tool provider       | natural-language report; multi-step analysis (requires `[agent]` extra)  |
+
+Set via Python (until a UI panel is added):
+
+```python
+from ai_deep_analysis.settings import set_backend, BackendChoice
+set_backend(BackendChoice.AGENT)              # or DIRECT / MCP
+```
+
+## Using sigdetect standalone (without URH)
+
+If you want the analysis pipeline outside URH — from Claude Code,
+Claude Desktop, scripts, or other MCP clients — install
+`mcp-sigdetect` directly:
+
+```bash
+pip install "mcp-sigdetect @ git+https://github.com/haxorthematrix/mcp-sigdetect.git"
+
+# Register with Claude Code
+claude mcp add sigdetect -- python -m sigdetect.server
+```
+
+See <https://github.com/haxorthematrix/mcp-sigdetect> for full docs.
+
+## What gets recovered (validation cases)
+
+Tested end-to-end against three reference captures:
+
+| Capture              | Verified recovery                                              |
+|----------------------|-----------------------------------------------------------------|
+| 433.92 MHz keyfob    | OOK PDM, 41-bit codes `41 90 4D 22 40` / `41 90 4D 21 3F`       |
+| 908.42 MHz Z-Wave    | FSK 100 kbps, sync byte `0xF0` per burst                        |
+| 315 MHz beacon       | OOK identified; reported as preamble-only (correctly)           |
+
+## What's different from upstream
+
+Exactly one upstream file is modified
+(`src/urh/controller/widgets/SignalFrame.py`) and one new package is
+added (`src/ai_deep_analysis/`). All AI logic lives in the new
+package, so upstream merges from `jopohl/urh` stay essentially
+conflict-free.
+
+If you want to disable the feature, leave the `[ai]` extra off the
+install: URH still works as-is and the button silently disappears.
+
+## License
+
+GPL-3.0, inherited from upstream URH.
+
+---
+
+# Universal Radio Hacker (upstream)
+
+The rest of this README is unchanged from upstream `jopohl/urh`. Issues
+specific to the AI Deep Analysis feature should be filed in
+[`haxorthematrix/urh-ng-ai`](https://github.com/haxorthematrix/urh-ng-ai/issues);
+everything else should go upstream.
+
 ![URH image](https://raw.githubusercontent.com/jopohl/urh/master/data/icons/banner.png)
 
 [![CI](https://github.com/jopohl/urh/actions/workflows/ci.yml/badge.svg)](https://github.com/jopohl/urh/actions/workflows/ci.yml)
